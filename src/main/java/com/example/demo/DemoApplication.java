@@ -1,5 +1,6 @@
 package com.example.demo;
 
+import org.apache.tomcat.jni.Library;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.boot.SpringApplication;
@@ -11,6 +12,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.sql.Array;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,198 +31,181 @@ public class DemoApplication {
 
 
 	@RestController
-	@RequestMapping("/users")
+	@RequestMapping("/library")
 	static class UsersController {
 
-		//
-		final UserService userService;
+		final BookService bookService;
 
-		UsersController(UserService userService) {
-			this.userService = userService;
+		UsersController(BookService bookService) {
+			this.bookService = bookService;
 		}
 
 		//endpoint to get user
-		@GetMapping("/{id}")
-		UserDTO getUser(@PathVariable Long id) {
-			return userService.findUserById(id);
+		@GetMapping("/books")
+		List<Book> getAllBooks() {
+			return bookService.getAllBooks();
+		}
+
+		@GetMapping("/logs")
+		List<Log> getAllLogs() {
+			return bookService.getAllLogs();
 		}
 
 		//endpoint for creating user
-		@PostMapping
-		UserDTO createUser(@RequestBody UserDTO userDTO) {
-			return userService.createUser(userDTO);
+		@PostMapping("/books")
+		BookDTO createBook(@RequestBody BookDTO bookDTO) {
+			return bookService.createBook(bookDTO.author, bookDTO.name);
+		}
+		@PostMapping("/logs/take")
+		LogDTO createLog(@RequestBody LogDTOCreate logDTO) {
+			return bookService.takeBook(logDTO.book_id, logDTO.client_name);
+		}
+
+		@PostMapping("/logs/return")
+		LogDTO createLog(@RequestBody LogDTOUpdate logDTO) {
+			return bookService.returnBook(logDTO.log_id);
 		}
 	}
 
+//--------------------
 
-	// spring data jpa
 
-	// controller = own API communication
-	// service = business logic
-	// repository = database communication
-	// client = external API communication
-
-//	@Entity
-//	// ORM - object relational mapping -
-//	// mapping between java objects and database tables
-//	class User {
+//	@Component
+//	static class LibraryClient{
+//		private final RestTemplate restTemplate;
 //
-//		Long Id;
+//		LibraryClient(RestTemplate restTemplate) {
+//			this.restTemplate = restTemplate;
+//		}
 //
-//		@Column(name = "age_user")
-//		Long age;
-//
-//		List<Post> posts = new ArrayList<>();
-//		// sql - structured query language
-//		// реляционные базы данных
-//
-//		// dcl - data creation language
-//		// dml  - data manipulation language
-//
-//
-//		// data creation language
-//		// create table user (
-//		// 	age int,
-//		// 	name varchar(255),
-//		// 	email varchar(255)
-//		// );
-//
-//
-
-		// data manipulation language
-		// crud - create read update delete
-
-
-		// postgresql
-		// mysql
-
-		// nosql db
-		// mongodb {
-//			user: {
-//				age: 12,
-//				name: "Zhambyl",
-//				email: "sdsa@gmai.com",
-//				posts: [
-//					{
-//						title: "sdsad",
-//						content: "sdsad"
-//					}
-//				]
-		// }
-		// redis
-		// cassandra
-		// neo4j
-
-		// join
-		// select age,name,email from user where id = 1;
-		// insert into user (age,name,email) values (12,"Zhambyl","e.zhambul@gmail");
-		// update user where id = 1 set name = "Zhambyl"
-		// delete from user where id = 1;
-
-
-		// table user
-		// age | name | email | profile_id   | post_id
-		// 12 | Zhambyl | e.zhambul@gmail.com | 1
-		// 18 | Sasha | sahsa@gmail
-
-
-		// table user_post
-		// user_id | post_id
-		// 1	   | 1
-
-
-		// one-to-one relationship
-		// one-to-many relationship
-		// many-to-many relationship
-
-		// table profile
-		// table post
-		// user_id | title | content
-		// 1	   | Sasha | sahsa@gmail
-
-
-
-		// table post
-		// user_id | title | content
-		// 1	   | Sasha | sahsa@gmail
-
-
-		// age | name | email
-		// age | name | email
-		// age | name | email
-		// age | name | email
-		// age | name | email
-		// age | name | email
-
-//	}
-//
-//	class Post {
-//
-//		Long Id;
+//		void createBook(String authorName, String bookName){
+//			restTemplate.postForObject();
+//		}
+//		void takeBook()
 //	}
 
-
 	@Component
-	static class IntagramClient {
-
-		private final RestTemplate restTemplate;
-
-		IntagramClient(RestTemplate restTemplate) {
-			this.restTemplate = restTemplate;
-		}
-
-		void banUser(String id) {
-			restTemplate.delete("http://instagram.com/user/" + id);
-			// make request to instagram
-		}
-
-		void deleteUser(String id) {
-			// make request to instagram
-		}
-	}
-
-
-	@Component
-	public static class UserService {
-
-		private final IntagramClient intagramClient;
+	public static class BookService {
 		private final UserRepository userRepository;
-
-		UserService(IntagramClient intagramClient, UserRepository userRepository) {
-			this.intagramClient = intagramClient;
+		private final LogRepository logRepository;
+		BookService(UserRepository userRepository, LogRepository logRepository){
 			this.userRepository = userRepository;
+			this.logRepository = logRepository;
+		}
+		public BookDTO createBook(String author, String name){
+			Book book = new Book();
+			book.setAuthor(author);
+			book.setName(name);
+			Book savedBook = userRepository.save(book);
+			return new BookDTO(savedBook.getAuthor(), savedBook.getName(), savedBook.getId());
 		}
 
-		UserDTO findUserById(Long id) {
-			//
-			Optional<User> byId = userRepository.findById(id);
-			if (byId.isPresent()) {
-				User user = byId.get();
-				return new UserDTO(user.getName(), user.getEmail(), user.getId().doubleValue());
-			}
-			throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+		public LogDTO takeBook(Long book_id, String client_name){
+			Log log = new Log();
+			log.setBook(userRepository.findBookById(book_id));
+			log.setClient_name(client_name);
+			log.setTaken(new Date().getTime());
+			Log savedLog = logRepository.save(log);
+			return new LogDTO(savedLog.getTaken(), -1L, savedLog.getBook(), savedLog.getClient_name(), savedLog.getId());
 		}
 
-		void banUser(Double id) {
-			// ban user
+		public  LogDTO returnBook(Long log_id){
+			Log existingLog = logRepository.findById(log_id)
+					.orElseThrow(() -> new IllegalArgumentException("Log not found"));
+
+			// Update the properties of the existing log with the values from the updated log
+			existingLog.setReturned(new Date().getTime());
+			logRepository.save(existingLog);
+			return new LogDTO(existingLog.getTaken(), existingLog.getReturned(), existingLog.getBook(), existingLog.getClient_name(), existingLog.getId());
+
+//			Optional<Log> logBox = logRepository.findById(log_id);
+//			if(logBox.isPresent()) {
+//				Log log = logBox.get();
+//				log.setReturned(new Date().getTime());
+//				Log savedLog = logRepository.updateLogById(log.getId(), log);
+//				return new LogDTO(savedLog.getTaken(), savedLog.getReturned(), savedLog.getBook(), savedLog.getClient_name(), savedLog.getId());
+//			}
+//			return new LogDTO(0L, 0L, new Book(), "error", 0L);
 		}
 
-		void deleteUser(Long id) {
-			// generate sql
-			// delete from user where id = 1;
-			userRepository.deleteById(id);
+		public List<Book> getAllBooks(){
+			return userRepository.findAll();
 		}
-
-
-		public UserDTO createUser(UserDTO userDTO) {
-			User user = new User();
-			user.setName(userDTO.name());
-			user.setEmail(userDTO.email());
-			User savedUser = userRepository.save(user);
-			return new UserDTO(savedUser.getName(), savedUser.getEmail(), savedUser.getId().doubleValue());
+		public List<Log> getAllLogs(){
+			return logRepository.findAll();
 		}
 	}
 
+//	@Component
+//	public static class BookLogService {
+//		private final UserRepository userRepository;
+//		BookLogService(UserRepository userRepository){
+//			this.userRepository = userRepository;
+//		}
+//
+//	}
+
+	//-------------
+//	@Component
+//	public static class UserService {
+//
+//		private final IntagramClient intagramClient;
+//		private final UserRepository userRepository;
+//
+//		UserService(IntagramClient intagramClient, UserRepository userRepository) {
+//			this.intagramClient = intagramClient;
+//			this.userRepository = userRepository;
+//		}
+//
+//		UserDTO findUserById(Long id) {
+//			//
+//			Optional<User> byId = userRepository.findById(id);
+//			if (byId.isPresent()) {
+//				User user = byId.get();
+//				return new UserDTO(user.getName(), user.getEmail(), user.getId().doubleValue());
+//			}
+//			throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+//		}
+//
+//		void banUser(Double id) {
+//			// ban user
+//		}
+//
+//		void deleteUser(Long id) {
+//			// generate sql
+//			// delete from user where id = 1;
+//			userRepository.deleteById(id);
+//		}
+//
+//
+//		public UserDTO createUser(UserDTO userDTO) {
+//			User user = new User();
+//			user.setName(userDTO.name());
+//			user.setEmail(userDTO.email());
+//			User savedUser = userRepository.save(user);
+//			return new UserDTO(savedUser.getName(), savedUser.getEmail(), savedUser.getId().doubleValue());
+//		}
+//	}
+//
+//
+//	@Component
+//	static class IntagramClient {
+//
+//		private final RestTemplate restTemplate;
+//
+//		IntagramClient(RestTemplate restTemplate) {
+//			this.restTemplate = restTemplate;
+//		}
+//
+//		void banUser(String id) {
+//			restTemplate.delete("http://instagram.com/user/" + id);
+//			// make request to instagram
+//		}
+//
+//		void deleteUser(String id) {
+//			// make request to instagram
+//		}
+//	}
 
 	//rest template configuration class
 	@Configuration
@@ -231,12 +217,23 @@ public class DemoApplication {
 		}
 	}
 
-	//record class for DTO User
-	static record UserDTO(String name, String email, Double id) {
+//	//record class for DTO User
+//	static record UserDTO(String name, String email, Double id) {
+//	}
+//
+//	//record class for DTO Post
+//	static record PostDTO(String title, String content, Double id) {
+//	}
+
+	static record BookDTO(String author, String name, Long id){
 	}
 
-	//record class for DTO Post
-	static record PostDTO(String title, String content, Double id) {
+	static record LogDTO(Long taken, Long returned, Book book, String client_name, Long id){
+	}
+
+	static record LogDTOCreate(Long book_id, String client_name){
+	}
+	static  record LogDTOUpdate(Long log_id){
 	}
 
 	//hello world rest controller
@@ -346,13 +343,13 @@ public class DemoApplication {
 	}
 
 
-	class Manager {
-
-		void run() {
-			Client client = new Client(new AgreemmentToSellAHouse());
-			client.signAgreement();
-		}
-	}
+//	class Manager {
+//
+//		void run() {
+//			Client client = new Client(new AgreemmentToSellAHouse());
+//			client.signAgreement();
+//		}
+//	}
 
 	@Component
 	class COMPLICATEDDbCreator implements DBCreator {
